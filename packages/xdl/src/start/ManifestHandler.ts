@@ -66,14 +66,14 @@ function shouldExposeEnvironmentVariableInManifest(key: string) {
   return key.startsWith('REACT_NATIVE_') || key.startsWith('EXPO_');
 }
 
-function stripPort(host: string | undefined): string | undefined {
+export function stripPort(host: string | undefined): string | undefined {
   if (!host) {
     return host;
   }
   return new URL('/', `http://${host}`).hostname;
 }
 
-async function getPackagerOptionsAsync(
+export async function getPackagerOptionsAsync(
   projectRoot: string
 ): Promise<[PackagerOptions, PackagerOptions]> {
   // Get packager opts and then copy into bundleUrlPackagerOpts
@@ -86,7 +86,7 @@ async function getPackagerOptionsAsync(
   return [projectSettings, bundleUrlPackagerOpts];
 }
 
-async function getBundleUrlAsync({
+export async function getBundleUrlAsync({
   projectRoot,
   platform,
   projectSettings,

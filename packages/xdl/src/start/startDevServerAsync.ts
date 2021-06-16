@@ -3,6 +3,7 @@ import { MetroDevServerOptions, runMetroDevServerAsync } from '@expo/dev-server'
 
 import {
   assertValidProjectRoot,
+  ExpoUpdatesManifestHandler,
   getFreePortAsync,
   ManifestHandler,
   ProjectSettings,
@@ -55,6 +56,7 @@ export async function startDevServerAsync(projectRoot: string, startOptions: Sta
 
   const { server, middleware, messageSocket } = await runMetroDevServerAsync(projectRoot, options);
   middleware.use(ManifestHandler.getManifestHandler(projectRoot));
+  middleware.use(ExpoUpdatesManifestHandler.getManifestHandler(projectRoot));
 
   // We need the manifest handler to be the first middleware to run so our
   // routes take precedence over static files. For example, the manifest is

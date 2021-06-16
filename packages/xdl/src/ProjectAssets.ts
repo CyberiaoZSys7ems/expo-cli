@@ -349,3 +349,29 @@ async function collectAssets(
 
   return [...bundles.ios.assets, ...bundles.android.assets, ...manifestAssets];
 }
+
+export async function collectManifestAssets(
+  projectRoot: string,
+  exp: ExpoAppManifest,
+  urlResolver: (path: string) => string
+): Promise<{ url: string; hash: string; key: string; contentType: string }[]> {
+  const manifestAssets: { url: string; hash: string; key: string; contentType: string }[] = [];
+  await resolveManifestAssets({
+    projectRoot,
+    manifest: exp,
+    async resolver(assetPath) {
+      const absolutePath = path.resolve(projectRoot, assetPath);
+      const contents = await fs.readFile(absolutePath);
+      const hash = md5hex(contents);
+      manifestAssets.push({
+        url: urlResolver(assetPath),
+        hash,
+        key: assetPath,
+        contentType: 'image/png',
+      });
+      return urlResolver(assetPath);
+    },
+    strict: true,
+  });
+  return manifestAssets;
+}
