@@ -121,7 +121,7 @@ describe('ExpoUpdatesManifestHandler', () => {
               },
             },
             _internal: {
-              isDebug: false,
+              isDebug: expect.any(Boolean),
               projectRoot: '/alpha',
               dynamicConfigPath: null,
               staticConfigPath: '/alpha/app.json',
