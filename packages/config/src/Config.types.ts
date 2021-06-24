@@ -59,28 +59,52 @@ export type HookArguments = {
   log: (msg: any) => void;
 };
 
-export type ExpoAppManifest = ExpoConfig & {
-  sdkVersion: string;
-  bundledAssets?: string[];
-  isKernel?: boolean;
-  kernel?: { androidManifestPath?: string; iosManifestPath?: string };
-  assetUrlOverride?: string;
-  publishedTime?: string;
-  commitTime?: string;
-  releaseId?: string;
-  revisionId?: string;
-  mainModuleName?: string;
-  env?: Record<string, any>;
-  bundleUrl?: string;
-  debuggerHost?: string;
-  logUrl?: string;
-  hostUri?: string;
-  id?: string;
-  developer?: {
+export type ExpoGoConfig = {
+  mainModuleName: string;
+  debuggerHost: string;
+  logUrl: string;
+  hostUri: string;
+  developer: {
     tool: string | null;
     projectRoot?: string;
   };
+  packagerOpts: {
+    [k: string]: any;
+  };
 };
+
+export type ExpoAppManifest = ExpoConfig &
+  Partial<ExpoGoConfig> & {
+    sdkVersion: string;
+    bundledAssets?: string[];
+    isKernel?: boolean;
+    kernel?: { androidManifestPath?: string; iosManifestPath?: string };
+    assetUrlOverride?: string;
+    publishedTime?: string;
+    commitTime?: string;
+    releaseId?: string;
+    revisionId?: string;
+    env?: Record<string, any>;
+    bundleUrl?: string;
+    id?: string;
+  };
+
+export interface ExpoUpdatesManifestAsset {
+  url: string;
+  key: string;
+  contentType: string;
+  hash?: string;
+}
+
+export interface ExpoUpdatesManifest {
+  id: string;
+  createdAt: string;
+  runtimeVersion: string;
+  launchAsset: ExpoUpdatesManifestAsset;
+  assets: ExpoUpdatesManifestAsset[];
+  metadata: object;
+  extra: { [key: string]: any };
+}
 
 export type Hook = {
   file: string;

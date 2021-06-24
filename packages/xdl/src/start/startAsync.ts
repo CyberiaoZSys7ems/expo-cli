@@ -1,4 +1,5 @@
 import { ExpoConfig, getConfig } from '@expo/config';
+import { MessageSocket } from '@expo/dev-server';
 import { Server } from 'http';
 
 import {
@@ -23,7 +24,7 @@ import {
 } from '../internal';
 
 let serverInstance: Server | null = null;
-let messageSocket: any | null = null;
+let messageSocket: MessageSocket | null = null;
 
 /**
  * Sends a message over web sockets to any connected device,

@@ -60,10 +60,55 @@ export async function resolveGoogleServicesFile(projectRoot: string, manifest: E
  * @param manifest
  * @returns Asset fields that the user has set like ["icon", "splash.image", ...]
  */
-async function getAssetFieldPathsForManifestAsync(manifest: ExpoAppManifest): Promise<string[]> {
+async function getAssetFieldPathsForManifestAsync(manifest: ExpoConfig): Promise<string[]> {
   // String array like ["icon", "notification.icon", "loading.icon", "loading.backgroundImage", "ios.icon", ...]
   const sdkAssetFieldPaths = await ExpSchema.getAssetSchemasAsync(manifest.sdkVersion);
   return sdkAssetFieldPaths.filter(assetSchema => get(manifest, assetSchema));
+}
+
+export async function resolveExpoUpdatesManifestAssets({
+  projectRoot,
+  manifest,
+  assetKeyResolver,
+}: {
+  projectRoot: string;
+  manifest: ExpoConfig;
+  assetKeyResolver: (assetPath: string) => Promise<string>;
+}): Promise<void> {
+  const assetSchemas = await getAssetFieldPathsForManifestAsync(manifest);
+  // Get the URLs
+  const assetInfos = await Promise.all(
+    assetSchemas.map(async manifestField => {
+      const pathOrURL = get(manifest, manifestField);
+      if (pathOrURL.match(/^https?:\/\/(.*)$/)) {
+        // It's a remote URL
+        return {
+          assetKey: null,
+          rawUrl: pathOrURL,
+        };
+      } else if (fs.existsSync(path.resolve(projectRoot, pathOrURL))) {
+        const assetKey = await assetKeyResolver(pathOrURL);
+        return {
+          assetKey,
+          rawUrl: null,
+        };
+      } else {
+        ProjectUtils.logError(
+          projectRoot,
+          'expo',
+          `Unable to resolve asset "${pathOrURL}" from "${manifestField}" in your app.json or app.config.js`
+        );
+        const err: ManifestResolutionError = new Error('Could not resolve local asset.');
+        err.localAssetPath = pathOrURL;
+        err.manifestField = manifestField;
+        throw err;
+      }
+    })
+  );
+
+  assetSchemas.forEach((manifestField, index: number) =>
+    set(manifest, `${manifestField}Asset`, assetInfos[index])
+  );
 }
 
 export async function resolveManifestAssets({
@@ -73,7 +118,7 @@ export async function resolveManifestAssets({
   strict = false,
 }: {
   projectRoot: string;
-  manifest: ExpoAppManifest;
+  manifest: ExpoConfig;
   resolver: (assetPath: string) => Promise<string>;
   strict?: boolean;
 }) {
@@ -350,16 +395,16 @@ async function collectAssets(
   return [...bundles.ios.assets, ...bundles.android.assets, ...manifestAssets];
 }
 
-export async function collectManifestAssets(
+export async function resolveAndCollectExpoUpdatesManifestAssets(
   projectRoot: string,
-  exp: ExpoAppManifest,
+  exp: ExpoConfig,
   urlResolver: (path: string) => string
 ): Promise<{ url: string; hash: string; key: string; contentType: string }[]> {
   const manifestAssets: { url: string; hash: string; key: string; contentType: string }[] = [];
-  await resolveManifestAssets({
+  await resolveExpoUpdatesManifestAssets({
     projectRoot,
     manifest: exp,
-    async resolver(assetPath) {
+    async assetKeyResolver(assetPath) {
       const absolutePath = path.resolve(projectRoot, assetPath);
       const contents = await fs.readFile(absolutePath);
       const hash = md5hex(contents);
@@ -369,9 +414,8 @@ export async function collectManifestAssets(
         key: assetPath,
         contentType: 'image/png',
       });
-      return urlResolver(assetPath);
+      return assetPath;
     },
-    strict: true,
   });
   return manifestAssets;
 }

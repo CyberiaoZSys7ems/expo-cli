@@ -1,4 +1,4 @@
-import { ExpoAppManifest, getConfig } from '@expo/config';
+import { ExpoUpdatesManifest, getConfig } from '@expo/config';
 import { getRuntimeVersionForSDKVersion } from '@expo/sdk-runtime-versions';
 import express from 'express';
 import http from 'http';
@@ -13,7 +13,12 @@ import {
   resolveEntryPoint,
   UrlUtils,
 } from '../internal';
-import { getManifestResponseAsync as getClassicManifestResponseAsync } from './ManifestHandler';
+import {
+  getBundleUrlAsync,
+  getExpoGoConfig,
+  getPackagerOptionsAsync,
+  stripPort,
+} from './ManifestHandler';
 
 function getPlatformFromRequest(req: express.Request | http.IncomingMessage): string {
   const url = req.url ? parse(req.url, true) : null;
@@ -26,42 +31,56 @@ function getPlatformFromRequest(req: express.Request | http.IncomingMessage): st
 
 export async function getManifestResponseAsync({
   projectRoot,
-  req,
+  platform,
+  host,
 }: {
   projectRoot: string;
-  req: express.Request | http.IncomingMessage;
-}): Promise<{ body: object; headers: Map<string, any> }> {
+  platform: string;
+  host?: string;
+}): Promise<{
+  body: ExpoUpdatesManifest;
+  headers: Map<string, number | string | readonly string[]>;
+}> {
   const headers = new Map<string, any>();
+  // set required headers for expo-updates manifest specification
   headers.set('expo-protocol-version', 0);
   headers.set('expo-sfv-version', 0);
   headers.set('cache-control', 'private, max-age=0');
   headers.set('content-type', 'application/json');
 
-  const platform = getPlatformFromRequest(req);
-  const host = req.headers.host;
-
+  const hostname = stripPort(host);
+  const [projectSettings, bundleUrlPackagerOpts] = await getPackagerOptionsAsync(projectRoot);
   const projectConfig = getConfig(projectRoot);
   const entryPoint = resolveEntryPoint(projectRoot, platform, projectConfig);
   const mainModuleName = UrlUtils.stripJSExtension(entryPoint);
-
-  const classicExpProjectConfig = (
-    await getClassicManifestResponseAsync({
-      projectRoot,
-      platform,
-      host,
-    })
-  ).exp as ExpoAppManifest;
-  const runtimeVersion =
-    classicExpProjectConfig.runtimeVersion ??
-    (classicExpProjectConfig.sdkVersion
-      ? getRuntimeVersionForSDKVersion(classicExpProjectConfig.sdkVersion)
-      : null);
-  const bundleUrl = classicExpProjectConfig.bundleUrl!;
-
-  // Resolve all assets and set them on the manifest as URLs
-  const assets = await ProjectAssets.collectManifestAssets(
+  const expoConfig = projectConfig.exp;
+  const expoGoConfig = await getExpoGoConfig({
     projectRoot,
-    projectConfig.exp as ExpoAppManifest,
+    projectSettings,
+    mainModuleName,
+    hostname,
+  });
+
+  const runtimeVersion =
+    expoConfig.runtimeVersion ??
+    (expoConfig.sdkVersion ? getRuntimeVersionForSDKVersion(expoConfig.sdkVersion) : null);
+  if (!runtimeVersion) {
+    throw new Error('Must specify runtimeVersion or sdkVersion in app.json');
+  }
+
+  const bundleUrl = await getBundleUrlAsync({
+    projectRoot,
+    platform,
+    projectSettings,
+    bundleUrlPackagerOpts,
+    mainModuleName,
+    hostname,
+  });
+
+  // resolve all assets and set them on the manifest as { rawUrl?: string, assetKey?: string } objects
+  const assets = await ProjectAssets.resolveAndCollectExpoUpdatesManifestAssets(
+    projectRoot,
+    expoConfig,
     path => bundleUrl!.match(/^https?:\/\/.*?\//)![0] + 'assets/' + path
   );
 
@@ -77,7 +96,9 @@ export async function getManifestResponseAsync({
     assets,
     metadata: {}, // required for the client to detect that this is an expo-updates manifest
     extra: {
-      expoGoConfig: classicExpProjectConfig,
+      eas: {}, // TODO(wschurman): somehow inject EAS config in here if known
+      expoClientConfig: expoConfig,
+      expoGoConfig,
     },
   };
 
@@ -93,7 +114,6 @@ export function getManifestHandler(projectRoot: string) {
     res: express.Response | http.ServerResponse,
     next: (err?: Error) => void
   ) => {
-    // Only support `/`, `/manifest`, `/index.exp` for the manifest middleware.
     if (!req.url || parse(req.url).pathname !== '/update-manifest-experimental') {
       next();
       return;
@@ -102,18 +122,14 @@ export function getManifestHandler(projectRoot: string) {
     try {
       const { body, headers } = await getManifestResponseAsync({
         projectRoot,
-        req,
+        host: req.headers.host,
+        platform: getPlatformFromRequest(req),
       });
-
-      // Send the response
       for (const [headerName, headerValue] of headers) {
         res.setHeader(headerName, headerValue);
       }
-
-      // End the request
       res.end(JSON.stringify(body));
 
-      // Log analytics
       Analytics.logEvent('Serve Expo Updates Manifest', {
         projectRoot,
         developerTool: Config.developerTool,
@@ -121,7 +137,6 @@ export function getManifestHandler(projectRoot: string) {
       });
     } catch (e) {
       ProjectUtils.logError(projectRoot, 'expo', e.stack);
-      // 5xx = Server Error HTTP code
       res.statusCode = 520;
       res.end(
         JSON.stringify({

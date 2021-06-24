@@ -1,5 +1,6 @@
 import { ProjectTarget } from '@expo/config';
-import { MetroDevServerOptions, runMetroDevServerAsync } from '@expo/dev-server';
+import { MessageSocket, MetroDevServerOptions, runMetroDevServerAsync } from '@expo/dev-server';
+import http from 'http';
 
 import {
   assertValidProjectRoot,
@@ -23,7 +24,10 @@ export type StartOptions = {
   target?: ProjectTarget;
 };
 
-export async function startDevServerAsync(projectRoot: string, startOptions: StartOptions) {
+export async function startDevServerAsync(
+  projectRoot: string,
+  startOptions: StartOptions
+): Promise<[http.Server, any, MessageSocket]> {
   assertValidProjectRoot(projectRoot);
 
   let port: number;
